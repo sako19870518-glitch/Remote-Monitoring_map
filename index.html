@@ -155,63 +155,31 @@ function icon(label,c,s){
   return L.divIcon({html,className:"",iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-14]});
 }
 
-/* ========== 読み込み ========== */
-async function fetchArrayBuffer(url){
-  const res = await fetch(url,{cache:"no-store"});
-  assert(res.ok, `データ取得失敗: ${url}`);
-  return res.arrayBuffer();
-}
-async function readArrayBufferToRows(buf){
-  const wb = XLSX.read(buf,{type:"array"});
-  return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:""});
-}
-
-/* ========== UI構築（グループ一覧：デフォルト閉） ========== */
-function buildGroupUI(groups, by){
-  groupList.innerHTML="";
-  groups.forEach((g,i)=>{
-    const det=document.createElement("details"); // open付けない=閉
-    det.className="group";
-
-    const sum=document.createElement("summary");
-    const dot=document.createElement("span"); dot.className="dot"; dot.style.background=color(g,i);
-    const lbl=document.createElement("span"); lbl.textContent=g||"(空白)";
-    const cnt=document.createElement("span"); cnt.className="count"; cnt.textContent=by[g].length+" 件";
-    sum.append(dot,lbl,cnt);
-
-    const ul=document.createElement("ul"); ul.className="plist";
-    by[g].forEach(rec=>{
-      const li=document.createElement("li"); li.className="item";
-      li.addEventListener("click",()=>{
-        const mm=markers.find(m=>m.id===rec._id);
-        if(!mm)return;
-        document.getElementById("map").scrollIntoView({behavior:"smooth", block:"start"});
-        map.setView(mm.marker.getLatLng(),15);
-        mm.marker.openPopup();
-      });
-      const badge=document.createElement("span");
-      badge.className="badge"; badge.style.background=color(g,i); badge.textContent=rec._label;
-      const name=document.createElement("span"); name.className="nm"; name.textContent=rec._name;
-      li.append(badge,name);
-      ul.append(li);
-    });
-
-    det.append(sum,ul);
-    groupList.append(det);
-  });
-}
-
 /* ========== GoogleマップURL（普通の地図へ / ストビュー強制なし） ========== */
 function mapsHrefForRow(r, urlK, lat, lng){
   const latN = Number(lat), lngN = Number(lng);
-  // 緯度経度がある前提（一覧に出せている地点だけリンクを出す）
   if (Number.isFinite(latN) && Number.isFinite(lngN)) {
-    // 検索系URLで「通常地図」を開く（スマホでもブラウザ利用を優先）
     return `https://www.google.com/maps/search/?api=1&query=${latN},${lngN}&source=web`;
   }
-  // 念のため（緯度経度が欠けていれば名称検索）
   const name = (r._name ?? "").toString().trim();
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}&source=web`;
+}
+
+/* ========== 位置をメートル単位で微オフセット（重なり解消） ========== */
+/* 同一点のマーカーを 6m, 12m, 18m… のリングに展開（最大8方向→次リング） */
+function offsetLatLng(lat, lng, idx, total){
+  const ringSize = 8;                 // 1リングあたりの最大配置数
+  const stepM = 6;                    // 1ステップ半径（メートル）
+  const ring = Math.floor(idx / ringSize) + 1;
+  const pos  = idx % ringSize;
+  const countThisRing = Math.min(ringSize, total - ringSize*(ring-1));
+  const angle = (2 * Math.PI / countThisRing) * pos;
+
+  const radiusM = stepM * ring;
+  const latRad = lat * Math.PI / 180;
+  const dLat = (radiusM * Math.sin(angle)) / 111320;                       // 1度あたり約111.32km
+  const dLng = (radiusM * Math.cos(angle)) / (111320 * Math.cos(latRad));  // 緯度による補正
+  return { lat: lat + dLat, lng: lng + dLng };
 }
 
 /* ========== 描画 ========== */
@@ -231,18 +199,41 @@ function render(){
   let seq=1, id=1;
   const ms=[];
 
+  /* --- 事前に同一点の総数をカウント --- */
+  const dupMap = new Map();     // key: "lat,lng" → {total, next}
+  function keyOf(lat,lng){ return `${(+lat).toFixed(6)},${(+lng).toFixed(6)}`; }
+
+  rows.forEach(r=>{
+    const latVal=parseNum(r[latK]), lngVal=parseNum(r[lngK]);
+    const name=(r[nameK]??"").toString().trim();
+    if(!name || !Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
+    const k = keyOf(latVal, lngVal);
+    const info = dupMap.get(k) || { total:0, next:0 };
+    info.total++; dupMap.set(k, info);
+  });
+
+  /* --- 実配置 --- */
   rows.forEach(r=>{
     const name=(r[nameK]??"").toString().trim();
     const latVal=parseNum(r[latK]), lngVal=parseNum(r[lngK]);
     if(!name || !Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
 
-    let lat=latVal, lng=lngVal;
     const grp=grpK?(r[grpK]??"").toString().trim():"";
     let label=numK?(r[numK]??"").toString().trim():"";
     if(label==="") label=String(seq++);
     const shp = shpK ? normShape(r[shpK]) : "circle";
     const gi = groups.indexOf(grp)>=0 ? groups.indexOf(grp) : (groups.push(grp)-1 + 1);
     const c  = color(grp, gi);
+
+    // 重なり解消：同一点の中で何番目かを取り出し、微オフセット
+    const k = keyOf(latVal, lngVal);
+    const info = dupMap.get(k);
+    let lat = latVal, lng = lngVal;
+    if(info && info.total > 1){
+      const idx = info.next++;                 // 0,1,2...
+      const p = offsetLatLng(latVal, lngVal, idx, info.total);
+      lat = p.lat; lng = p.lng;
+    }
 
     const href = mapsHrefForRow({_name:name}, urlK, lat, lng);
     const pop = `<b>${name}</b>${descK?`<br>${(r[descK]??"").toString()}`:""}<br>
