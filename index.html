@@ -117,7 +117,10 @@ const MANIFEST_URL = "data/manifest.json";
 
 /* ===== 地図初期化 ===== */
 const map = L.map('map').setView([27.0, 128.4], 11);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19, attribution:'&copy; OpenStreetMap'}).addTo(map);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19,
+  attribution:'&copy; OpenStreetMap'
+}).addTo(map);
 let layerGroup = L.layerGroup().addTo(map);
 
 /* ===== 参照 ===== */
@@ -135,6 +138,7 @@ const GRP=["備考","グループ","カテゴリ","区分","分類","班","ブ�
 const NUM=["番号","No","no","num","id","ID"];
 const SHP=["形","shape","記号","marker"];
 const URLS=["URL","url","Url","リンク","Google","StreetView","SV","sv_url","sv","streetview"];
+const PHT=["写真","画像","写真ファイル","画像ファイル","photo","image","img"];
 
 function normalizeHeader(s){
   return String(s).replace(/[\u3000\s]+/g,"").toLowerCase();
@@ -170,7 +174,13 @@ function icon(label,c,s){
     : s==="square"
       ? `<div class="pin-base pin-square" style="background:${c}">${label}</div>`
       : `<div class="pin-base pin-circle" style="background:${c}">${label}</div>`;
-  return L.divIcon({html,className:"",iconSize:[28,28],iconAnchor:[14,14],popupAnchor:[0,-14]});
+  return L.divIcon({
+    html,
+    className:"",
+    iconSize:[28,28],
+    iconAnchor:[14,14],
+    popupAnchor:[0,-14]
+  });
 }
 
 /* ===== Googleマップ（通常地図） ===== */
@@ -242,15 +252,16 @@ function render(){
   const lngK =findKey(headers,LNG)  || "経度";
 
   if(!rows[0].hasOwnProperty(nameK) || !rows[0].hasOwnProperty(latK) || !rows[0].hasOwnProperty(lngK)){
-    showDiag(`必須列が見つかりません（名称/緯度/経度）: 見つかったキー name=${nameK} lat=${latK} lng=${lngK}`);
+    showDiag(`必須列が見つかりません（名称/緯度/経度）: name=${nameK} lat=${latK} lng=${lngK}`);
     return;
   }
 
-  const descK=findKey(headers,DESC);
-  const grpK =findKey(headers,GRP);
-  const numK =findKey(headers,NUM);
-  const shpK =findKey(headers,SHP);
-  const urlK =findKey(headers,URLS);
+  const descK  = findKey(headers,DESC);
+  const grpK   = findKey(headers,GRP);
+  const numK   = findKey(headers,NUM);
+  const shpK   = findKey(headers,SHP);
+  const urlK   = findKey(headers,URLS);
+  const photoK = findKey(headers,PHT);
 
   layerGroup.clearLayers(); markers=[]; grpColors={};
   const by={}, groups=[];
@@ -293,11 +304,46 @@ function render(){
 
     const href = mapsHrefForRow({_name:name}, urlK, lat, lng);
     const desc = descK ? (r[descK]??"").toString() : "";
-    /* ▼▼ ここだけ変更（「 / 形: ${shp}」を削除） ▼▼ */
-    const pop = `<b>${name}</b>${desc?`<br>${desc}`:""}<br>
+
+    // 写真リンク（Excelの値をそのまま柔軟に解釈）
+    let photoHtml = "";
+    if (photoK) {
+      const raw = (r[photoK] ?? "").toString().trim();
+      if (raw) {
+        let photoUrl = "";
+
+        if (/^https?:\/\//i.test(raw)) {
+          // 1) http/https から始まる → そのままURL
+          photoUrl = raw;
+        } else if (raw.startsWith("/")) {
+          // 2) / から始まる → ドメイン直下パス
+          photoUrl = location.origin + raw;
+        } else if (raw.includes("/")) {
+          // 3) スラッシュを含む → origin + "/" + 相対パス
+          photoUrl = location.origin + "/" + raw;
+        } else {
+          // 4) ファイル名だけ → icons/配下のファイルとみなす
+          let fname = raw;
+          if (!/\.[a-z0-9]+$/i.test(fname)) {
+            // 拡張子なしなら .jpg を付ける
+            fname = fname + ".jpg";
+          }
+          // "./icons/..." として現在のサイトルート(kanshi/)から相対
+          photoUrl = "icons/" + fname;
+        }
+
+        photoHtml = `
+          <br>
+          <a href="${photoUrl}" target="_blank" rel="noopener"
+             style="color:#1976d2;font-weight:700;text-decoration:none;">
+            📷 写真を見る
+          </a>`;
+      }
+    }
+
+    const pop = `<b>${name}</b>${desc ? `<br>${desc}` : ""}${photoHtml}<br>
                  <small><a class="gmaps-link" href="${href}" target="_blank" rel="noopener">Googleマップで開く</a></small><br>
                  <small>グループ: ${grp||"(空白)"}</small>`;
-    /* ▲▲ 変更はこの1か所だけ ▲▲ */
 
     const m=L.marker([lat,lng],{icon:icon(label,c,shp)}).bindPopup(pop);
     m.addTo(layerGroup);
