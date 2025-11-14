@@ -139,6 +139,8 @@ const NUM=["番号","No","no","num","id","ID"];
 const SHP=["形","shape","記号","marker"];
 const URLS=["URL","url","Url","リンク","Google","StreetView","SV","sv_url","sv","streetview"];
 const PHT=["写真","画像","写真ファイル","画像ファイル","photo","image","img"];
+/* ★ おんどとり Web Storage / グラフ用 URL 列候補 */
+const GRAPH=["グラフURL","おんどとり","おんどとりWebStorage","WebStorage","graph","graph_url"];
 
 function normalizeHeader(s){
   return String(s).replace(/[\u3000\s]+/g,"").toLowerCase();
@@ -208,31 +210,79 @@ function offsetLatLng(lat, lng, idx, total){
   return { lat: lat + dLat, lng: lng + dLng };
 }
 
-/* ===== グループUI ===== */
+/* ===== グループUI（右側に「グラフを開く」） ===== */
 function buildGroupUI(groups, by){
   groupList.innerHTML="";
   groups.forEach((g,i)=>{
-    const det=document.createElement("details"); det.className="group";
+    const det=document.createElement("details"); 
+    det.className="group";
+
     const sum=document.createElement("summary");
-    const dot=document.createElement("span"); dot.className="dot"; dot.style.background=color(g,i);
-    const lbl=document.createElement("span"); lbl.textContent=g||"(空白)";
-    const cnt=document.createElement("span"); cnt.className="count"; cnt.textContent=by[g].length+" 件";
+    const dot=document.createElement("span"); 
+    dot.className="dot"; 
+    dot.style.background=color(g,i);
+    const lbl=document.createElement("span"); 
+    lbl.textContent=g||"(空白)";
+    const cnt=document.createElement("span"); 
+    cnt.className="count"; 
+    cnt.textContent=by[g].length+" 件";
     sum.append(dot,lbl,cnt);
 
-    const ul=document.createElement("ul"); ul.className="plist";
+    const ul=document.createElement("ul"); 
+    ul.className="plist";
+
     by[g].forEach(rec=>{
-      const li=document.createElement("li"); li.className="item";
+      const li=document.createElement("li"); 
+      li.className="item";
+      li.style.display = "flex";
+      li.style.alignItems = "center";
+      li.style.justifyContent = "space-between";
+
+      // 左側：番号 + 名称（クリックで地図フォーカス）
+      const leftBox = document.createElement("div");
+      leftBox.style.display = "flex";
+      leftBox.style.alignItems = "center";
+      leftBox.style.gap = "10px";
+
+      const badge=document.createElement("span");
+      badge.className="badge"; 
+      badge.style.background=color(g,i); 
+      badge.textContent=rec._label;
+
+      const name=document.createElement("span"); 
+      name.className="nm"; 
+      name.textContent=rec._name;
+
+      leftBox.append(badge,name);
+
+      // 右側：グラフを開く（おんどとり Web Storage 等のURLがある行だけ）
+      const rightBox = document.createElement("div");
+      if (rec._graph) {
+        const link = document.createElement("span");
+        link.textContent = "グラフを開く";
+        link.style.color = "#1976d2";
+        link.style.cursor = "pointer";
+        link.style.fontWeight = "700";
+
+        link.addEventListener("click",(e)=>{
+          e.stopPropagation(); // 行クリックとは独立
+          window.open(rec._graph, "_blank", "noopener");
+        });
+
+        rightBox.append(link);
+      }
+
+      li.append(leftBox, rightBox);
+
+      // 行全体クリックでマップへジャンプ（既存挙動そのまま）
       li.addEventListener("click",()=>{
         const mm=markers.find(m=>m.id===rec._id);
         if(!mm)return;
-        $("#map").scrollIntoView({behavior:"smooth", block:"start"});
+        document.getElementById("map").scrollIntoView({behavior:"smooth", block:"start"});
         map.setView(mm.marker.getLatLng(),15);
         mm.marker.openPopup();
       });
-      const badge=document.createElement("span");
-      badge.className="badge"; badge.style.background=color(g,i); badge.textContent=rec._label;
-      const name=document.createElement("span"); name.className="nm"; name.textContent=rec._name;
-      li.append(badge,name);
+
       ul.append(li);
     });
 
@@ -262,6 +312,7 @@ function render(){
   const shpK   = findKey(headers,SHP);
   const urlK   = findKey(headers,URLS);
   const photoK = findKey(headers,PHT);
+  const graphK = findKey(headers,GRAPH);  // ★ グラフURL列
 
   layerGroup.clearLayers(); markers=[]; grpColors={};
   const by={}, groups=[];
@@ -350,7 +401,8 @@ function render(){
     markers.push({id, marker:m, grp});
 
     if(!by[grp]) by[grp]=[];
-    by[grp].push({_id:id, _label:label, _name:name});
+    const graphUrl = graphK ? (r[graphK] ?? "").toString().trim() : "";
+    by[grp].push({_id:id, _label:label, _name:name, _graph:graphUrl});
     ms.push(m);
     id++;
   });
