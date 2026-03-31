@@ -191,27 +191,24 @@ function icon(label, c, s){
   });
 }
 
-/* 近い座標も同じグループとして扱う */
+/* 近い座標を同一扱い */
 function clusterKey(lat, lng){
   return `${(+lat).toFixed(5)},${(+lng).toFixed(5)}`;
 }
 
-/* ずらし量を少し大きめに */
+/* 横に少しだけ並べる */
 function offsetLatLng(lat, lng, idx, total){
-  const ringSize = 8;
-  const stepM = 12;
-
-  const ring = Math.floor(idx / ringSize) + 1;
-  const pos = idx % ringSize;
-  const countThisRing = Math.min(ringSize, total - ringSize * (ring - 1));
-  const angle = (2 * Math.PI / countThisRing) * pos;
-  const radiusM = stepM * ring;
+  const stepM = 4;  // ここを 3 にするとさらに近くなる
+  const center = (total - 1) / 2;
+  const offsetIndex = idx - center;
 
   const latRad = lat * Math.PI / 180;
-  const dLat = (radiusM * Math.sin(angle)) / 111320;
-  const dLng = (radiusM * Math.cos(angle)) / (111320 * Math.cos(latRad));
+  const dLng = (stepM * offsetIndex) / (111320 * Math.cos(latRad));
 
-  return { lat: lat + dLat, lng: lng + dLng };
+  return {
+    lat: lat,
+    lng: lng + dLng
+  };
 }
 
 function mapsHrefForRow(r, urlK, lat, lng){
