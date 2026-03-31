@@ -374,6 +374,27 @@ function icon(label, c, s){
   });
 }
 
+/* ===== 重なり回避（同じ座標を少しずらす） ===== */
+function offsetLatLng(lat, lng, idx, total){
+  const ringSize = 8;
+  const stepM = 6;
+
+  const ring = Math.floor(idx / ringSize) + 1;
+  const pos = idx % ringSize;
+  const countThisRing = Math.min(ringSize, total - ringSize * (ring - 1));
+  const angle = (2 * Math.PI / countThisRing) * pos;
+  const radiusM = stepM * ring;
+
+  const latRad = lat * Math.PI / 180;
+  const dLat = (radiusM * Math.sin(angle)) / 111320;
+  const dLng = (radiusM * Math.cos(angle)) / (111320 * Math.cos(latRad));
+
+  return {
+    lat: lat + dLat,
+    lng: lng + dLng
+  };
+}
+
 /* ===== Googleマップ ===== */
 function mapsHrefForRow(r, urlK, lat, lng){
   const latN = Number(lat);
@@ -489,6 +510,23 @@ function render(){
   let id = 1;
   const ms = [];
 
+  /* 同一点件数を先に数える */
+  const dupMap = new Map();
+  const keyOf = (lat, lng) => `${(+lat).toFixed(6)},${(+lng).toFixed(6)}`;
+
+  rows.forEach(r => {
+    const name = (r[nameK] ?? "").toString().trim();
+    const latVal = parseNum(r[latK]);
+    const lngVal = parseNum(r[lngK]);
+
+    if (!name || !Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
+
+    const k = keyOf(latVal, lngVal);
+    const info = dupMap.get(k) || { total: 0, next: 0 };
+    info.total++;
+    dupMap.set(k, info);
+  });
+
   rows.forEach(r => {
     const name = (r[nameK] ?? "").toString().trim();
     const latVal = parseNum(r[latK]);
@@ -503,6 +541,20 @@ function render(){
     const shp = shpK ? normShape(r[shpK]) : "circle";
     const gi = groups.indexOf(grp) >= 0 ? groups.indexOf(grp) : groups.push(grp) - 1;
     const c = color(grp, gi);
+
+    /* 同じ座標なら少しずらす */
+    let lat = latVal;
+    let lng = lngVal;
+
+    const k = keyOf(latVal, lngVal);
+    const info = dupMap.get(k);
+
+    if (info && info.total > 1){
+      const idx = info.next++;
+      const p = offsetLatLng(latVal, lngVal, idx, info.total);
+      lat = p.lat;
+      lng = p.lng;
+    }
 
     const href = mapsHrefForRow({ _name: name }, urlK, latVal, lngVal);
     const desc = descK ? (r[descK] ?? "").toString() : "";
@@ -544,7 +596,7 @@ function render(){
       <small>グループ: ${grp || "(空白)"}</small>
     `;
 
-    const m = L.marker([latVal, lngVal], {
+    const m = L.marker([lat, lng], {
       icon: icon(label, c, shp)
     }).bindPopup(pop);
 
