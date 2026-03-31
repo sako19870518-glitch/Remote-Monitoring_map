@@ -1,13 +1,284 @@
-// ★★★ グラフ機能削除版 ★★★
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>地点マップ</title>
 
+<!-- PWA -->
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#ffffff">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+  :root{
+    --bg:#fafafa;
+    --ink:#111;
+    --muted:#6b6b6b;
+    --line:#dcdcdc;
+  }
+
+  html, body { height:100%; }
+
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans JP","Yu Gothic",Meiryo,sans-serif;
+  }
+
+  .wrap{
+    max-width:1100px;
+    margin:0 auto;
+    padding:18px;
+  }
+
+  .card{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.05);
+  }
+
+  .h{
+    font-weight:800;
+    font-size:18px;
+    margin:0 0 8px;
+  }
+
+  .row{
+    display:grid;
+    grid-template-columns:1fr 180px;
+    gap:10px;
+  }
+
+  .ctl{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+
+  label{
+    font-size:12px;
+    color:var(--muted);
+  }
+
+  select, button{
+    height:44px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    font-size:14px;
+    padding:0 10px;
+    background:#fff;
+    cursor:pointer;
+    font-weight:700;
+  }
+
+  #map{
+    height:60vh;
+    border-radius:12px;
+    border:1px solid var(--line);
+    margin-top:12px;
+  }
+
+  .divider{
+    height:1px;
+    background:var(--line);
+    margin:12px 0;
+  }
+
+  .group-ui{
+    display:grid;
+    gap:8px;
+    margin-top:10px;
+  }
+
+  details.group{
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+  }
+
+  details.group > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-weight:700;
+  }
+
+  details.group[open] > summary{
+    border-bottom:1px solid var(--line);
+  }
+
+  .dot{
+    width:14px;
+    height:14px;
+    border-radius:50%;
+  }
+
+  .count{
+    margin-left:auto;
+    color:var(--muted);
+    font-weight:600;
+  }
+
+  .plist{
+    margin:0;
+    padding:8px 10px 10px;
+    list-style:none;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    max-height:220px;
+    overflow:auto;
+  }
+
+  .item{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    cursor:pointer;
+    padding:6px 8px;
+    border-radius:8px;
+  }
+
+  .item:hover{
+    background:#f2f2f2;
+  }
+
+  .badge{
+    min-width:28px;
+    height:28px;
+    border-radius:8px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-weight:800;
+    color:#fff;
+  }
+
+  .nm{
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:560px;
+  }
+
+  /* ピン */
+  .pin-base{
+    width:28px;
+    height:28px;
+    color:#fff;
+    font-weight:800;
+    font-size:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:2px solid rgba(255,255,255,.95);
+    box-shadow:0 2px 6px rgba(0,0,0,.35);
+    line-height:1;
+  }
+
+  .pin-circle{
+    border-radius:50%;
+  }
+
+  .pin-square{
+    border-radius:6px;
+  }
+
+  .pin-diamond{
+    width:26px;
+    height:26px;
+    transform:rotate(45deg);
+    border-radius:6px;
+  }
+
+  .pin-diamond > span{
+    transform:rotate(-45deg);
+    display:inline-block;
+  }
+
+  .gmaps-link{
+    color:#1976d2;
+    text-decoration:none;
+    font-weight:700;
+  }
+
+  .gmaps-link:hover{
+    text-decoration:underline;
+  }
+
+  #diag{
+    position:fixed;
+    right:10px;
+    top:10px;
+    z-index:9999;
+    background:#d32f2f;
+    color:#fff;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    display:none;
+  }
+</style>
+</head>
+
+<body>
+<div id="diag"></div>
+
+<div class="wrap">
+  <div class="card" style="padding:14px;">
+    <p class="h">地点マップ</p>
+
+    <div class="row">
+      <div class="ctl">
+        <label>リスト選択</label>
+        <select id="dataset"></select>
+      </div>
+      <div class="ctl">
+        <label>&nbsp;</label>
+        <button id="reload">表示</button>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div id="groupList" class="group-ui"></div>
+
+    <div class="divider"></div>
+
+    <div id="map"></div>
+
+    <div class="divider"></div>
+
+    <div style="display:flex;justify-content:flex-end;">
+      <button id="openRaw">元データを開く</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<script>
 /* ===== ユーティリティ ===== */
 const $ = s => document.querySelector(s);
+
 function showDiag(msg){
   const d = $("#diag");
   d.textContent = msg;
   d.style.display = "inline-block";
   console.error(msg);
 }
+
 function safeRun(fn, msg){
   try{
     fn();
@@ -21,10 +292,12 @@ const MANIFEST_URL = "data/manifest.json";
 
 /* ===== 地図初期化 ===== */
 const map = L.map("map").setView([27.0, 128.4], 11);
+
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   maxZoom: 19,
   attribution: "&copy; OpenStreetMap"
 }).addTo(map);
+
 let layerGroup = L.layerGroup().addTo(map);
 
 /* ===== 参照 ===== */
@@ -53,11 +326,12 @@ const PHT  = ["写真","画像","写真ファイル","画像ファイル","photo
 function normalizeHeader(s){
   return String(s).replace(/[\u3000\s]+/g, "").toLowerCase();
 }
+
 function findKey(headers, candidates){
   const norm = headers.map(h => normalizeHeader(h));
-  for(const cand of candidates){
+  for (const cand of candidates){
     const i = norm.indexOf(normalizeHeader(cand));
-    if(i >= 0) return headers[i];
+    if (i >= 0) return headers[i];
   }
   return null;
 }
@@ -65,20 +339,25 @@ function findKey(headers, candidates){
 /* ===== 値正規化 ===== */
 function normShape(v){
   const s = (v ?? "").toString().toLowerCase();
-  if(s.includes("四") || s.includes("□") || s.includes("square")) return "square";
-  if(s.includes("ひ") || s.includes("菱") || s.includes("dia") || s.includes("diamond")) return "diamond";
+
+  if (s.includes("四") || s.includes("□") || s.includes("square")) return "square";
+  if (s.includes("ひ") || s.includes("菱") || s.includes("dia") || s.includes("diamond")) return "diamond";
+
   return "circle";
 }
+
 function parseNum(v){
   const n = Number(String(v).replace(/[^\d.\-]/g, ""));
   return Number.isFinite(n) ? n : NaN;
 }
+
 function color(grp, i){
   const P = ["#e6194b","#3cb44b","#0082c8","#f58231","#911eb4","#46f0f0","#f032e6","#d2f53c","#fabebe","#008080","#e6beff","#aa6e28"];
-  if(grpColors[grp]) return grpColors[grp];
+  if (grpColors[grp]) return grpColors[grp];
   grpColors[grp] = P[i % P.length];
   return grpColors[grp];
 }
+
 function icon(label, c, s){
   const html = s === "diamond"
     ? `<div class="pin-base pin-diamond" style="background:${c}"><span>${label}</span></div>`
@@ -99,9 +378,11 @@ function icon(label, c, s){
 function mapsHrefForRow(r, urlK, lat, lng){
   const latN = Number(lat);
   const lngN = Number(lng);
-  if(Number.isFinite(latN) && Number.isFinite(lngN)){
+
+  if (Number.isFinite(latN) && Number.isFinite(lngN)) {
     return `https://www.google.com/maps/search/?api=1&query=${latN},${lngN}`;
   }
+
   const name = (r._name ?? "").toString().trim();
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(name)}`;
 }
@@ -138,8 +419,9 @@ function buildGroupUI(groups, by){
 
       li.addEventListener("click", () => {
         const mm = markers.find(m => m.id === rec._id);
-        if(!mm) return;
-        $("#map").scrollIntoView({ behavior: "smooth" });
+        if (!mm) return;
+
+        $("#map").scrollIntoView({ behavior: "smooth", block: "start" });
         map.setView(mm.marker.getLatLng(), 15);
         mm.marker.openPopup();
       });
@@ -164,10 +446,31 @@ function buildGroupUI(groups, by){
 
 /* ===== 描画 ===== */
 function render(){
+  if (!rows.length){
+    showDiag("データが空です");
+    groupList.innerHTML = "";
+    layerGroup.clearLayers();
+    return;
+  }
+
   const headers = Object.keys(rows[0] || {});
+  if (!headers.length){
+    showDiag("シートが空か、ヘッダ行が読めません");
+    groupList.innerHTML = "";
+    layerGroup.clearLayers();
+    return;
+  }
+
   const nameK = findKey(headers, NAME) || "名称";
   const latK  = findKey(headers, LAT)  || "緯度";
   const lngK  = findKey(headers, LNG)  || "経度";
+
+  if (!rows[0].hasOwnProperty(nameK) || !rows[0].hasOwnProperty(latK) || !rows[0].hasOwnProperty(lngK)){
+    showDiag(`必須列が見つかりません（名称/緯度/経度）: name=${nameK} lat=${latK} lng=${lngK}`);
+    groupList.innerHTML = "";
+    layerGroup.clearLayers();
+    return;
+  }
 
   const descK  = findKey(headers, DESC);
   const grpK   = findKey(headers, GRP);
@@ -191,11 +494,11 @@ function render(){
     const latVal = parseNum(r[latK]);
     const lngVal = parseNum(r[lngK]);
 
-    if(!name || !Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
+    if (!name || !Number.isFinite(latVal) || !Number.isFinite(lngVal)) return;
 
     const grp = grpK ? (r[grpK] ?? "").toString().trim() : "";
     let label = numK ? (r[numK] ?? "").toString().trim() : "";
-    if(label === "") label = String(seq++);
+    if (label === "") label = String(seq++);
 
     const shp = shpK ? normShape(r[shpK]) : "circle";
     const gi = groups.indexOf(grp) >= 0 ? groups.indexOf(grp) : groups.push(grp) - 1;
@@ -204,54 +507,152 @@ function render(){
     const href = mapsHrefForRow({ _name: name }, urlK, latVal, lngVal);
     const desc = descK ? (r[descK] ?? "").toString() : "";
 
-    const pop = `<b>${name}</b>${desc ? `<br>${desc}` : ""}<br><small><a class="gmaps-link" href="${href}" target="_blank" rel="noopener">Googleマップで開く</a></small>`;
+    let photoHtml = "";
+    if (photoK) {
+      const raw = (r[photoK] ?? "").toString().trim();
+      if (raw) {
+        let photoUrl = "";
 
-    const m = L.marker([latVal, lngVal], { icon: icon(label, c, shp) }).bindPopup(pop);
+        if (/^https?:\/\//i.test(raw)) {
+          photoUrl = raw;
+        } else if (raw.startsWith("/")) {
+          photoUrl = location.origin + raw;
+        } else if (raw.includes("/")) {
+          photoUrl = location.origin + "/" + raw;
+        } else {
+          let fname = raw;
+          if (!/\.[a-z0-9]+$/i.test(fname)) {
+            fname = fname + ".jpg";
+          }
+          photoUrl = "icons/" + fname;
+        }
+
+        photoHtml = `
+          <br>
+          <a href="${photoUrl}" target="_blank" rel="noopener" class="gmaps-link">📷 写真を見る</a>
+        `;
+      }
+    }
+
+    const pop = `
+      <b>${name}</b>
+      ${desc ? `<br>${desc}` : ""}
+      ${photoHtml}
+      <br>
+      <small><a class="gmaps-link" href="${href}" target="_blank" rel="noopener">Googleマップで開く</a></small>
+      <br>
+      <small>グループ: ${grp || "(空白)"}</small>
+    `;
+
+    const m = L.marker([latVal, lngVal], {
+      icon: icon(label, c, shp)
+    }).bindPopup(pop);
+
     m.addTo(layerGroup);
     markers.push({ id, marker: m, grp });
 
-    if(!by[grp]) by[grp] = [];
-    by[grp].push({ _id: id, _label: label, _name: name });
+    if (!by[grp]) by[grp] = [];
+    by[grp].push({
+      _id: id,
+      _label: label,
+      _name: name
+    });
+
     ms.push(m);
     id++;
   });
 
-  if(ms.length){
+  if (ms.length){
     const g = L.featureGroup(ms);
     map.fitBounds(g.getBounds().pad(0.2));
     buildGroupUI(Object.keys(by), by);
+  } else {
+    showDiag("有効行が0件でした（名称/緯度/経度を確認）");
+    groupList.innerHTML = "";
   }
 }
 
 /* ===== 読み込み ===== */
 async function fetchRows(item){
-  const res = await fetch(item.url);
+  const res = await fetch(item.url, { cache: "no-store" });
+  if (!res.ok){
+    showDiag(`データ取得失敗: ${item.url}`);
+    return [];
+  }
+
   const buf = await res.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array" });
   const sh = wb.Sheets[wb.SheetNames[0]];
+
+  if (!sh){
+    showDiag("最初のシートが見つかりません");
+    return [];
+  }
+
   return XLSX.utils.sheet_to_json(sh, { defval: "" });
 }
 
 async function loadManifest(){
-  const res = await fetch(MANIFEST_URL);
-  return await res.json();
+  const res = await fetch(MANIFEST_URL, { cache: "no-store" });
+  if (!res.ok){
+    showDiag("data/manifest.json が見つかりません");
+    return [];
+  }
+
+  const m = await res.json();
+  if (!Array.isArray(m) || !m.length){
+    showDiag("manifest.json が空です");
+    return [];
+  }
+
+  return m;
 }
 
 async function loadSelected(){
   const idx = Number(dsSel.value ?? 0);
   const item = manifest[idx];
-  btnOpen.onclick = () => window.open(item.url, "_blank");
+
+  if (!item){
+    showDiag("選択データが不正です");
+    return;
+  }
+
+  btnOpen.onclick = () => window.open(item.url, "_blank", "noopener");
   rows = await fetchRows(item);
   render();
 }
 
 /* ===== イベント ===== */
-btnReload.addEventListener("click", loadSelected);
-dsSel.addEventListener("change", loadSelected);
+btnReload.addEventListener("click", () => safeRun(loadSelected, "表示エラー"));
+dsSel.addEventListener("change", () => safeRun(loadSelected, "表示エラー"));
 
 /* ===== 起動 ===== */
 (async () => {
-  manifest = await loadManifest();
-  dsSel.innerHTML = manifest.map((d, i) => `<option value="${i}">${d.name}</option>`).join("");
-  await loadSelected();
+  try{
+    manifest = await loadManifest();
+    if (!manifest.length) return;
+
+    dsSel.innerHTML = manifest
+      .map((d, i) => `<option value="${i}">${d.name}</option>`)
+      .join("");
+
+    dsSel.value = "0";
+    await loadSelected();
+  }catch(e){
+    showDiag("初期化失敗: " + e.message);
+  }
 })();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js").catch(e => {
+    const d = document.getElementById("diag");
+    d.textContent = "SW登録失敗: " + e.message;
+    d.style.display = "inline-block";
+    console.error(e);
+  });
+}
+</script>
+</body>
+</html>
